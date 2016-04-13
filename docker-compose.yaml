@@ -1,0 +1,7 @@
+mq:
+  image: rabbitmq:3.5-management
+  hostname: rabbitmq
+  environment:
+    RABBITMQ_ERLANG_COOKIE: selinko
+  ports:
+    - 5672:5672    

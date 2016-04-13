@@ -1,0 +1,2 @@
+defmodule Rabbit do
+end
