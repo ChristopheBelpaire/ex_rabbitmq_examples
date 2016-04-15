@@ -21,6 +21,7 @@ defmodule RabbitTest do
   test "work queues" do
     {:ok, connection} = AMQP.Connection.open("amqp://default.docker")
     {:ok, channel} = AMQP.Channel.open(connection)
+
     AMQP.Basic.publish(channel, "", "task_queue", "Hello worker 1", persistent: true)
     AMQP.Basic.publish(channel, "", "task_queue", "Hello worker 2", persistent: true)
     AMQP.Basic.publish(channel, "", "task_queue", "Hello worker 3", persistent: true)
@@ -33,8 +34,10 @@ defmodule RabbitTest do
 
   	AMQP.Basic.consume(channel, "task_queue", worker1)
   	AMQP.Basic.consume(channel, "task_queue", worker2)
-  	:timer.sleep(1000)
-  	send(worker1, {:get_messages,self})
+
+    :timer.sleep(1000)
+
+    send(worker1, {:get_messages,self})
   	receive do
   		{:messages, messages} ->
   			assert messages == [["worker 1", "Hello worker 3"], ["worker 1", "Hello worker 1"]]
@@ -46,6 +49,41 @@ defmodule RabbitTest do
   			assert messages == [["worker 2", "Hello worker 4"], ["worker 2", "Hello worker 2"]]
   	end
 
+  end
+
+  test "publish/subscribe" do
+    {:ok, connection} = AMQP.Connection.open("amqp://default.docker")
+    {:ok, channel} = AMQP.Channel.open(connection)
+    AMQP.Exchange.declare(channel, "logs", :fanout)
+
+    {:ok, %{queue: queue_1_name}} = AMQP.Queue.declare(channel, "", exclusive: true)
+    {:ok, %{queue: queue_2_name}} = AMQP.Queue.declare(channel, "", exclusive: true)
+
+    AMQP.Queue.bind(channel, queue_1_name, "logs")
+    AMQP.Queue.bind(channel, queue_2_name, "logs")
+
+    AMQP.Basic.publish(channel, "logs", "", "Hello subscribers")
+
+
+    subscriber1 = spawn(ReceiveLogs, :wait_for_messages, [channel, "subscriber 1", []])
+    subscriber2 = spawn(ReceiveLogs, :wait_for_messages, [channel, "subscriber 2", []])
+
+
+    AMQP.Basic.consume(channel, queue_1_name, subscriber1, no_ack: true)
+    AMQP.Basic.consume(channel, queue_2_name, subscriber2, no_ack: true)
+
+
+    send(subscriber1, {:get_messages,self})
+    receive do
+      {:messages, messages} ->
+        assert messages == [["subscriber 1", "Hello subscribers"]]
+    end
+
+    send(subscriber2, {:get_messages,self})
+    receive do
+      {:messages, messages} ->
+        assert messages == [["subscriber 2", "Hello subscribers"]]
+    end
   end
 
 end
